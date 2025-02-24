@@ -4,27 +4,47 @@ use stylus_sdk::{
     storage::StorageMap,
 };
 
-#[derive(Debug)]
-pub struct PropertyInfo {
-    owner: Address,
-    guest: Address,
-    name: String,
-    property_address: String,
-    description: String,
-    img_url: String,
-    booking_starts_at: u64,
-    booking_ends_at: u64,
-    price_per_day: u256,
-    id: u256,
-    is_booked: bool,
+sol! {
+     event PropertyListedEvent(
+        string name,
+        string propertyAddress,
+        string description,
+        string imgUrl,
+        uint256 pricePerDay,
+        uint256 id
+    );
+    event PropertyBookedEvent(
+        uint256 id,
+        address guest,
+        uint256 numberOfDays,
+        uint256 price
+    );
+}
+    
+
+sol_storage! {
+    #[entrypoint]
+
+pub  struct PropertyInfo {
+        address owner;
+        address guest;
+        string name;
+        string propertyAddress;
+        string description;
+        string imgUrl;
+        uint256 bookingStartsAt;
+        uint256 bookingEndsAt;
+        uint256 pricePerDay;
+        uint256 id;
+        bool isBooked;
 }
 
-#[derive(Debug)]
 pub struct Airbnb {
-    owner: StorageMap<(), Address>,
-    counter: StorageMap<(), u256>,
-    rental_ids: StorageMap<u256, u256>,
-    properties: StorageMap<u256, PropertyInfo>,
+    address public owner;
+    uint256 public counter;
+    uint256[] public rentalIds;
+     mapping(uint256 => PropertyInfo) public properties;
+    }
 }
 
 #[external]
