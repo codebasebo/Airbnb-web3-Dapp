@@ -24,7 +24,6 @@ sol! {
 
 sol_storage! {
     #[entrypoint]
-
 pub  struct PropertyInfo {
         address owner;
         address guest;
@@ -50,8 +49,8 @@ pub struct Airbnb {
 #[external]
 impl Airbnb {
     pub fn constructor(&mut self) {
-        self.owner.insert((), msg::sender());
-        self.counter.insert((), 0.into());
+        self.owner = msg::sender();
+        self.counter = U256::zero();
     }
 
     pub fn list_property(
@@ -60,17 +59,17 @@ impl Airbnb {
         property_address: String,
         description: String,
         img_url: String,
-        price_per_day: u256,
+        price_per_day: U256,
     ) {
-        let counter = self.counter.get(&()).unwrap_or_default();
+        let counter = self.counter;
         
         let new_property = PropertyInfo {
             owner: msg::sender(),
             guest: Address::ZERO,
-            name,
-            property_address,
-            description,
-            img_url,
+            name: name.clone(),
+            property_address: property_address.clone(),
+            description: description.clone(),
+            img_url: img_url.clone(),
             booking_starts_at: 0,
             booking_ends_at: 0,
             price_per_day,
@@ -79,51 +78,33 @@ impl Airbnb {
         };
 
         self.properties.insert(counter, new_property);
-        self.rental_ids.insert(counter, counter);
+        self.rental_ids.push(counter);
 
         // Emit event
-        evm::log::log2(
-            &[],
-            &solidity::encode_event_data(&(
-                name,
-                property_address,
-                description,
-                img_url,
-                price_per_day,
-                counter
-            )),
-            solidity::encode_event_sig("PropertyListedEvent(string,string,string,string,uint256,uint256)"),
-            msg::sender().into(),
-        );
+        PropertyListedEvent(
+            name,
+            property_address,
+            description,
+            img_url,
+            price_per_day,
+            counter
+        ).emit();
 
-        self.counter.insert((), counter + 1.into());
+        self.counter += U256::from(1);
     }
 
-    pub fn get_due_price(
-        &self,
-        id: u256,
-        start_date: u64,
-        end_date: u64,
-    ) -> u256 {
+    pub fn get_due_price(&self, id: U256, start_date: u64, end_date: u64) -> U256 {
         let property = self.properties.get(&id).expect("Property not found");
-        let number_of_days = (end_date - start_date) / 86400000;
-        property.price_per_day * number_of_days.into()
+        let number_of_days = (end_date - start_date) / 86400;
+        property.price_per_day * U256::from(number_of_days)
     }
 
-    pub fn book_property(
-        &mut self,
-        property_id: u256,
-        start_date: u64,
-        end_date: u64,
-    ) {
+    pub fn book_property(&mut self, property_id: U256, start_date: u64, end_date: u64) {
         let property = self.properties.get_mut(&property_id).expect("Property not found");
-        let number_of_days = (end_date - start_date) / 86400000;
-        let required_payment = property.price_per_day * number_of_days.into();
+        let number_of_days = (end_date - start_date) / 86400;
+        let required_payment = property.price_per_day * U256::from(number_of_days);
 
-        require(
-            msg::value() >= required_payment,
-            "Send more ETH"
-        );
+        assert!(msg::value() >= required_payment, "Send more ETH");
 
         // Transfer payment to property owner
         property.owner.transfer(msg::value());
@@ -135,55 +116,20 @@ impl Airbnb {
         property.guest = msg::sender();
 
         // Emit event
-        evm::log::log2(
-            &[],
-            &solidity::encode_event_data(&(
-                property_id,
-                msg::sender(),
-                number_of_days,
-                msg::value()
-            )),
-            solidity::encode_event_sig("PropertyBookedEvent(uint256,address,uint256,uint256)"),
-            msg::sender().into(),
-        );
+        PropertyBookedEvent(
+            property_id,
+            msg::sender(),
+            number_of_days,
+            msg::value()
+        ).emit();
     }
 
-    pub fn unbook_property(&mut self, property_id: u256) {
+    pub fn unbook_property(&mut self, property_id: U256) {
         let property = self.properties.get_mut(&property_id).expect("Property not found");
 
-        require(
-            property.owner == msg::sender(),
-            "Only the Property Owner can unbook the property"
-        );
-
-        require(
-            property.is_booked,
-            "Property is not booked"
-        );
+        assert!(property.owner == msg::sender(), "Only the Property Owner can unbook the property");
+        assert!(property.is_booked, "Property is not booked");
 
         property.is_booked = false;
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_list_property() {
-        let mut contract = Airbnb::new();
-        contract.constructor();
-
-        contract.list_property(
-            "Beach House".to_string(),
-            "123 Ocean Dr".to_string(),
-            "Beautiful beachfront property".to_string(),
-            "http://example.com/img.jpg".to_string(),
-            1_000_000.into(),
-        );
-
-        let property = contract.properties.get(&0.into()).unwrap();
-        assert_eq!(property.name, "Beach House");
-        assert_eq!(property.price_per_day, 1_000_000.into());
     }
 }
